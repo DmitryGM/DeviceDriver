@@ -4,6 +4,6 @@ all:
 	make -C /lib/modules/$(shell uname -r)/build M="$(PWD)" modules
 	rmmod ch_drv
 	insmod ch_drv.ko
-	chmod 777 /dev/mychdev
+	chmod 777 /dev/var8
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M="$(PWD)" clean

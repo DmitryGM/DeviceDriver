@@ -68,8 +68,13 @@ int file_write(struct file *file, unsigned long long offset, unsigned char *data
   set_fs(get_ds());
  
   ret = vfs_write(file, data, size, &offset);
- 
   set_fs(oldfs);
+
+  if (EBADF == ret) {
+    printk(KERN_INFO "EBADF");
+    return 0;
+  }
+
   return ret;
 }
  
@@ -132,32 +137,33 @@ static ssize_t my_write(struct file *f, const char __user *buf, size_t len, loff
     return 0;
   copy_from_user(&char_buf, buf, len);
   char_buf[len - 1] = '\0';
-  // if (strncmp("open", char_buf, 4) == 0)
-  // {
-  //   sscanf()
-  // }
-  if(sscanf(char_buf, "open %s", path)){
+
+  if (sscanf(char_buf, "open %s", path)) {
     printk(KERN_INFO "Driver:%d write(%s)\n", len , path);
     open_file = file_open(path, O_CREAT | O_TRUNC | O_RDWR , S_IRWXO | S_IRWXU);
     return len;
   }
  
-  if(strcmp("close", char_buf) == 0){
-    if(open_file != NULL){
+  if (strcmp("close", char_buf) == 0) {
+    if(open_file != NULL) {
       printk(KERN_INFO "Driver: closing file");
       file_close(open_file);
+      open_file = NULL;
     }
-    else{
+    else {
       printk(KERN_INFO "Driver: no open file to close");
     }
     return len;
   }
 
-  // read_string:
-  int length = sprintf(char_buf, "%d\n", sum(char_buf));
-
-  file_write(open_file, global_offset, char_buf, length);
-  global_offset += length;
+  if (open_file != NULL) {
+    int length = sprintf(char_buf, "%d\n", sum(char_buf));
+    file_write(open_file, global_offset, char_buf, length);
+    global_offset += length;
+  }
+  else {
+    printk(KERN_INFO "Driver: open_file == NULL ;(");
+  }
   return len;
 }
 static struct file_operations mychdev_fops = {

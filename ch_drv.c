@@ -11,12 +11,14 @@
 #include <asm/segment.h>
 #include <asm/uaccess.h>
 #include <linux/buffer_head.h>
- 
+
 static dev_t first;
 static struct cdev c_dev;
 static struct class *cl;
 static struct file* open_file = NULL;
- 
+
+static unsigned long long global_offset = 0;
+
 struct file *file_open(const char *path, int flags, int rights)
 {
   printk(KERN_INFO "file_open");
@@ -26,7 +28,7 @@ struct file *file_open(const char *path, int flags, int rights)
  
   oldfs = get_fs();
   set_fs(get_ds());
-  filp = filp_open(path, flags, rights);
+  filp = filp_open(path, flags | O_RDWR, rights);
   set_fs(oldfs);
   if (IS_ERR(filp)) {
     err = PTR_ERR(filp);
@@ -57,6 +59,8 @@ int file_read(struct file *file, unsigned long long offset, unsigned char *data,
  
 int file_write(struct file *file, unsigned long long offset, unsigned char *data, unsigned int size)
 {
+  printk(KERN_INFO "file_write");
+
   mm_segment_t oldfs;
   int ret;
  
@@ -90,8 +94,38 @@ static ssize_t my_read(struct file *f, char __user *buf, size_t len, loff_t *off
   printk(KERN_INFO "Driver: read()\n");
   return 0;
 }
+
+int is_digit(char ch) {
+  return '0' <= ch && ch <= '9';
+}
+
+int ch_to_int(char ch) {
+  return (int) (ch - '0');
+}
+
+int sum(char *string) {
+  int sum = 0;
+  size_t i = 0;
+  while (string[i] != '\0') {
+    int acc = 0;
+
+    while (is_digit(string[i])) {
+      acc *= 10;
+      acc += ch_to_int(string[i]);
+      i++;
+    }
+
+    sum += acc;
+
+    while (!is_digit(string[i]) && string[i] != '\0')
+      i++;
+  }
+  return sum;
+}
+
 static ssize_t my_write(struct file *f, const char __user *buf, size_t len, loff_t *off)
 {
+  printk(KERN_INFO "my_write");
   char char_buf[50];
   char path[50];
   if (len > 50)
@@ -104,20 +138,26 @@ static ssize_t my_write(struct file *f, const char __user *buf, size_t len, loff
   // }
   if(sscanf(char_buf, "open %s", path)){
     printk(KERN_INFO "Driver:%d write(%s)\n", len , path);
-    open_file = file_open(path, O_CREAT | O_TRUNC , O_RDWR);
+    open_file = file_open(path, O_CREAT | O_TRUNC | O_RDWR , S_IRWXO | S_IRWXU);
+    return len;
   }
- 
  
   if(strcmp("close", char_buf) == 0){
     if(open_file != NULL){
-      file_close(open_file);
       printk(KERN_INFO "Driver: closing file");
+      file_close(open_file);
     }
     else{
       printk(KERN_INFO "Driver: no open file to close");
     }
+    return len;
   }
- 
+
+  // read_string:
+  int length = sprintf(char_buf, "%d\n", sum(char_buf));
+
+  file_write(open_file, global_offset, char_buf, length);
+  global_offset += length;
   return len;
 }
 static struct file_operations mychdev_fops = {
